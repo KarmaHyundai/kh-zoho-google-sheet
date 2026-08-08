@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1">
+
+  <title>
+    Karma Hyundai | Google Sheet Request
+  </title>
+
+  <link
+    rel="stylesheet"
+    href="/styles.css">
+</head>
+
+<body>
+
+  <div
+    id="overlay"
+    class="overlay hidden">
+
+    <div class="spinner"></div>
+
+    <div id="overlayText">
+      Processing…
+    </div>
+  </div>
+
+
+  <header class="topbar">
+
+    <img
+      class="logo"
+      src="https://static.wixstatic.com/media/868ad7_4a9446f609d2468fba3ed80bbc50ddcf~mv2.png/v1/fill/w_324,h_46,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/Logo.png"
+      alt="Karma Hyundai">
+
+    <div class="title">
+      <h1>
+        Google Sheet Request
+      </h1>
+
+      <p>
+        Controlled creation and restricted access
+      </p>
+    </div>
+
+    <button
+      id="logoutBtn"
+      class="btn secondary hidden">
+      Logout
+    </button>
+
+  </header>
+
+
+  <main class="container">
+
+    <section
+      id="loginCard"
+      class="card login-card">
+
+      <h2>Login</h2>
+
+      <p class="muted">
+        Enter your authorised work email.
+        An OTP will be sent to your mailbox.
+      </p>
+
+      <label for="email">
+        Work Email
+      </label>
+
+      <input
+        id="email"
+        type="email"
+        autocomplete="email"
+        placeholder="name@karmahyundai.com">
+
+      <button
+        id="sendOtpBtn"
+        class="btn primary top-gap">
+        Send OTP
+      </button>
+
+      <div
+        id="otpArea"
+        class="hidden">
+
+        <label for="otp">
+          6-digit OTP
+        </label>
+
+        <input
+          id="otp"
+          inputmode="numeric"
+          maxlength="6"
+          placeholder="000000">
+
+        <button
+          id="verifyOtpBtn"
+          class="btn primary top-gap">
+          Verify & Login
+        </button>
+
+      </div>
+
+      <div
+        id="loginMessage"
+        class="message">
+      </div>
+
+    </section>
+
+
+    <section
+      id="app"
+      class="hidden">
+
+      <div class="userbar">
+        <strong id="userName"></strong>
+        <span
+          id="userMeta"
+          class="muted">
+        </span>
+      </div>
+
+
+      <div class="grid">
+
+        <section class="card">
+
+          <h2>
+            Request New Google Sheet
+          </h2>
+
+          <label for="sheetName">
+            Google Sheet Name
+          </label>
+
+          <input
+            id="sheetName"
+            maxlength="120"
+            placeholder="e.g. Sector 85 Daily Sales Tracker - Aug 2026">
+
+          <label for="purpose">
+            Purpose
+          </label>
+
+          <textarea
+            id="purpose"
+            maxlength="1500"
+            rows="5"
+            placeholder="Briefly explain why the Google Sheet is required."></textarea>
+
+          <button
+            id="submitRequestBtn"
+            class="btn primary top-gap">
+            Submit Request
+          </button>
+
+          <div
+            id="requestMessage"
+            class="message">
+          </div>
+
+        </section>
+
+
+        <section class="card">
+
+          <div class="section-head">
+
+            <h2>
+              My Requests
+            </h2>
+
+            <button
+              id="refreshMineBtn"
+              class="btn secondary small">
+              Refresh
+            </button>
+
+          </div>
+
+
+          <div class="table-wrap">
+
+            <table>
+
+              <thead>
+                <tr>
+                  <th>Request</th>
+                  <th>Google Sheet</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+
+              <tbody
+                id="myRequestsBody">
+              </tbody>
+
+            </table>
+
+          </div>
+
+        </section>
+
+      </div>
+
+
+      <section
+        id="adminArea"
+        class="admin-wrap hidden">
+
+        <div class="section-head">
+
+          <h2>
+            Admin Approval
+          </h2>
+
+          <button
+            id="refreshAdminBtn"
+            class="btn secondary small">
+            Refresh
+          </button>
+
+        </div>
+
+
+        <div class="stats">
+
+          <div class="stat">
+            <span>Pending</span>
+            <strong id="statPending">0</strong>
+          </div>
+
+          <div class="stat">
+            <span>Approved</span>
+            <strong id="statApproved">0</strong>
+          </div>
+
+          <div class="stat">
+            <span>Rejected</span>
+            <strong id="statRejected">0</strong>
+          </div>
+
+          <div class="stat">
+            <span>Error</span>
+            <strong id="statError">0</strong>
+          </div>
+
+        </div>
+
+
+        <section class="card">
+
+          <div class="section-head">
+
+            <h3>Requests</h3>
+
+            <select
+              id="adminFilter"
+              class="filter">
+
+              <option value="ALL">
+                All
+              </option>
+
+              <option value="PENDING">
+                Pending
+              </option>
+
+              <option value="PROVISIONING">
+                Provisioning
+              </option>
+
+              <option value="APPROVED">
+                Approved
+              </option>
+
+              <option value="REJECTED">
+                Rejected
+              </option>
+
+              <option value="ERROR">
+                Error
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="table-wrap">
+
+            <table>
+
+              <thead>
+                <tr>
+                  <th>Request</th>
+                  <th>Requester</th>
+                  <th>Sheet / Purpose</th>
+                  <th>Status</th>
+                  <th>Admin Note</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+
+              <tbody
+                id="adminRequestsBody">
+              </tbody>
+
+            </table>
+
+          </div>
+
+        </section>
+
+      </section>
+
+    </section>
+
+  </main>
+
+  <script src="/app.js"></script>
+
+</body>
+</html>
