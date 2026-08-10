@@ -1,517 +1,296 @@
 # Karma Hyundai Google Sheet Request
-## Final GitHub + Netlify Implementation
+## Version 1.3 — Vertical Approval Routing
 
-## Final architecture
+This is an upgrade to the current GitHub + Netlify deployment. You do **not** need a new Netlify site, a new GitHub repository, or a new control Google Sheet.
 
-```text
-Zoho / Google user
-        |
-        v
-https://sheets.karmahyundai.com
-        |
-        v
-Netlify site (deployed from GitHub)
-        |
-        v
-Netlify Function /api
-        |
-        v
-Google Apps Script backend
-        |
-        +---- USER_MASTER
-        |
-        +---- SHEET_REQUESTS
-        |
-        v
-Admin approves
-        |
-        v
-Google Sheet created in deployment owner's My Drive
-        |
-        v
-General access = Restricted
-Requester exact email = Editor
-```
+## Final routing
 
-There is no long Apps Script URL for users to save.
+| Vertical | Approver(s) |
+|---|---|
+| Sales | imran@karmahyundai.com |
+| Service | groupgm.service@karmahyundai.com |
+| Backend / Other Departments | kashish@karmahyundai.com OR armaan@karmahyundai.com |
 
-The Apps Script URL exists only as a Netlify server environment variable.
+For Backend / Other Departments, both authorised heads receive the request. The **first approval or rejection completes the request**.
+
+`ADMIN` and `SUPERADMIN` remain fallback/oversight approvers and can act on any request.
 
 ---
 
-# PART A - GOOGLE BACKEND
+## Roles
 
-## 1. Choose the Google owner account
+- `USER` — submit requests; see own requests.
+- `VERTICAL_HEAD` — submit requests; see/approve only requests routed to their email.
+- `ADMIN` — see/approve all requests.
+- `SUPERADMIN` — see/approve all requests.
 
-Use the Google account which should own every generated Sheet.
+A `VERTICAL_HEAD` role is derived automatically from `VERTICAL_MASTER`. You do not need to manually add Imran, Group GM Service, Kashish or Armaan to USER_MASTER just to give them vertical approval rights.
 
-Example:
+`USER_MASTER` continues as an **admin + exception list**:
+- ADMIN / SUPERADMIN
+- INACTIVE / blocked emails
+- optional name overrides
 
-`googleadmin@karmahyundai.com`
-
-All future generated Google Sheets will be created under the Google account used to deploy the Apps Script Web App as **Execute as me**.
-
-Do not later redeploy from another Google account unless ownership behavior is intentionally being changed.
-
----
-
-## 2. Create the control Google Sheet
-
-While logged in as the intended Google owner:
-
-Create a blank Google Sheet named:
-
-`KH - Google Sheet Request Control`
-
-Open:
-
-`Extensions -> Apps Script`
+Ordinary `@karmahyundai.com` users do not need to be listed.
 
 ---
 
-## 3. Add Apps Script files
+# 1. BACK UP THE CONTROL SHEET
 
-From this repository open:
+Before changing production:
+
+1. Open `KH - Google Sheet Request Control`.
+2. File → Make a copy.
+3. Keep the copy as rollback backup.
+
+---
+
+# 2. REPLACE APPS SCRIPT CODE
+
+Use:
 
 `google-apps-script/Code.gs`
 
-Copy the complete contents into `Code.gs`.
+Replace the current **entire** `Code.gs`.
 
-Enable the manifest file from Apps Script Project Settings if required and replace it using:
+Use the supplied:
 
 `google-apps-script/appsscript.json`
 
-Save.
+Important:
+- Drive appears only once under `enabledAdvancedServices`.
+- `userinfo.email` is included.
+- Do not separately create a duplicate Drive service entry.
 
 ---
 
-## 4. Enable Drive API v3
+# 3. RUN setupSystem()
 
-In Apps Script:
+From Apps Script run:
 
-`Services (+) -> Drive API -> Add`
+`setupSystem()`
 
-Use Drive API v3.
+This is designed to upgrade the existing workbook.
 
-This is required for controlled permission management.
+It will create/verify:
 
----
+1. `USER_MASTER`
+2. `SHEET_REQUESTS`
+3. `VERTICAL_MASTER`
 
-## 5. Run setup
+It will **not delete existing SHEET_REQUESTS rows**.
 
-In Apps Script select:
+It appends these three new columns at the end of `SHEET_REQUESTS` if they are missing:
 
-`setupSystem`
+- `VERTICAL`
+- `APPROVER_EMAIL_1`
+- `APPROVER_EMAIL_2`
 
-Click **Run**.
-
-Accept the Google permissions.
-
-It creates only two tabs:
-
-### USER_MASTER
-
-```text
-EMAIL | NAME | ROLE | STATUS
-```
-
-Supported roles:
-
-```text
-USER
-ADMIN
-SUPERADMIN
-```
-
-Supported status:
-
-```text
-ACTIVE
-INACTIVE
-```
-
-The Google account running setup is automatically inserted as SUPERADMIN.
-
-Example:
-
-```text
-googleadmin@karmahyundai.com | Google Admin | SUPERADMIN | ACTIVE
-sales1@karmahyundai.com      | Sales User   | USER       | ACTIVE
-admin2@karmahyundai.com      | Second Admin | ADMIN      | ACTIVE
-```
-
-### SHEET_REQUESTS
-
-The script creates:
-
-```text
-REQUEST_ID
-REQUESTED_AT
-REQUESTER_EMAIL
-REQUESTER_NAME
-SHEET_NAME
-PURPOSE
-STATUS
-ADMIN_NOTE
-ACTION_BY
-ACTION_AT
-SHEET_ID
-SHEET_URL
-OWNER_EMAIL
-UPDATED_AT
-```
+The existing v1.2 columns remain in place.
 
 ---
 
-## 6. Get the API secret
+# 4. VERIFY VERTICAL_MASTER
 
-In the control Google Sheet use:
+The setup seeds:
 
-`Sheet Request Module -> Show Deployment Settings`
+| VERTICAL | APPROVER_EMAIL_1 | APPROVER_NAME_1 | APPROVER_EMAIL_2 | APPROVER_NAME_2 | STATUS | SORT_ORDER |
+|---|---|---|---|---|---|---|
+| Sales | imran@karmahyundai.com | Imran | | | ACTIVE | 10 |
+| Service | groupgm.service@karmahyundai.com | Group GM Service | | | ACTIVE | 20 |
+| Backend / Other Departments | kashish@karmahyundai.com | Kashish | armaan@karmahyundai.com | Armaan | ACTIVE | 30 |
 
-Copy the `API_SECRET`.
+Check each email carefully before going live.
 
-Do not paste it into GitHub or the frontend files.
-
-It will be stored only in Netlify Environment Variables.
+Future changes to vertical heads are made by editing `VERTICAL_MASTER`. No code change is required.
 
 ---
 
-## 7. Deploy Apps Script
+# 5. UPDATE THE EXISTING APPS SCRIPT WEB DEPLOYMENT
 
-Go to:
+Apps Script:
 
-`Deploy -> New deployment -> Web app`
+`Deploy → Manage deployments`
 
-Choose:
+Open the existing Web App deployment and click Edit.
 
-**Execute as:** `Me`
+Choose **New version**.
 
-**Who has access:** `Anyone`
+Keep:
+
+- Execute as: `Me`
+- Who has access: `Anyone`
 
 Deploy.
 
-Copy the final `/exec` URL.
+If you update the existing deployment, its `/exec` URL should remain the same. In that case no Netlify environment variable needs to change.
 
-Example format:
-
-```text
-https://script.google.com/macros/s/...../exec
-```
-
-Users will never need this URL.
+Google Apps Script web apps deployed as "execute as me" run as the deployment owner, so approved Sheets continue to be created under the central Google owner account.
 
 ---
 
-# PART B - GITHUB
+# 6. UPDATE GITHUB
 
-## 8. Create a private GitHub repository
+Replace/push:
 
-Recommended repository name:
+- `public/index.html`
+- `public/styles.css`
+- `public/app.js`
+- `google-apps-script/Code.gs`
+- `google-apps-script/appsscript.json`
 
-`karma-google-sheet-request`
+The Netlify Function and Netlify environment variables do not need to change.
 
-Use a **Private** repository.
-
-Do not initialise with a different template if you are going to upload this supplied package.
-
----
-
-## 9. Upload this repository package to GitHub
-
-Upload the following structure exactly:
-
-```text
-public/
-  index.html
-  styles.css
-  app.js
-
-netlify/
-  functions/
-    api.mjs
-
-google-apps-script/
-  Code.gs
-  appsscript.json
-
-netlify.toml
-.gitignore
-.env.example
-README.md
-IMPLEMENTATION_STEPS.md
-```
-
-The actual secrets must never be put into `.env.example`.
-
-The `.env.example` file contains placeholders only.
+Because Netlify is already linked to GitHub, the push will trigger a new Netlify deployment automatically.
 
 ---
 
-# PART C - NETLIFY
+# 7. USER REQUEST FLOW
 
-## 10. Create the Netlify site from GitHub
+The requester now sees:
 
-In Netlify:
+1. Google Sheet Name
+2. Purpose
+3. Vertical / Approving Head
 
-`Add new project / Import an existing project`
+When they select a vertical, the portal displays who will approve it.
 
-Choose GitHub.
+The requester never types or chooses an approver email. The backend resolves it from `VERTICAL_MASTER`.
 
-Select repository:
-
-`karma-google-sheet-request`
-
-Netlify reads `netlify.toml`.
-
-There is no build command required.
-
-Publish directory:
-
-`public`
-
-Functions directory:
-
-`netlify/functions`
+On Submit, `SHEET_REQUESTS` captures the vertical and the approver email(s) that applied **at the time of submission**. This preserves the audit trail even if the vertical head changes later.
 
 ---
 
-## 11. Add Netlify environment variables
+# 8. SALES TEST
 
-In the Netlify project open:
+Use any normal `@karmahyundai.com` user.
 
-`Project configuration -> Environment variables`
+Submit:
+- Sheet Name: `TEST - Sales Routing`
+- Purpose: `Routing test`
+- Vertical: `Sales`
 
-Add:
-
-### APPS_SCRIPT_URL
-
-Value:
-
-Your Apps Script `/exec` URL.
-
-### KH_GSR_API_SECRET
-
-Value:
-
-The `API_SECRET` generated by `setupSystem()`.
-
-These values are not committed to GitHub.
-
-After adding or changing them, trigger a Netlify deploy.
-
----
-
-# PART D - GIVE USERS A SHORT STANDARD URL
-
-## 12. Netlify URL option
-
-Netlify initially gives a URL similar to:
-
-```text
-random-name.netlify.app
-```
-
-Change the site name to something clear, for example:
-
-```text
-karma-sheet-request.netlify.app
-```
-
-Then every employee saves only that one URL.
-
-## 13. Recommended custom domain
-
-For a permanent professional URL, use something such as:
-
-```text
-sheets.karmahyundai.com
-```
-
-or:
-
-```text
-sheetrequest.karmahyundai.com
-```
-
-Connect that subdomain to the Netlify project using Netlify Domain Management.
-
-Then the Apps Script URL can change later without affecting employees.
-
-Employees will always use:
-
-```text
-https://sheets.karmahyundai.com
-```
-
-This is the recommended production approach.
+Expected:
+1. Request = PENDING.
+2. `VERTICAL` = Sales.
+3. `APPROVER_EMAIL_1` = imran@karmahyundai.com.
+4. Imran receives the approval email.
+5. Imran logs into the same Netlify portal by OTP.
+6. His role displays `Vertical Head`.
+7. His Approval Queue contains the Sales request.
+8. He does not see Service or Backend requests unless separately mapped there.
+9. On approval, the central Google account creates the Sheet.
+10. General access remains Restricted.
+11. Requester is added as Editor.
+12. `ACTION_BY` = imran@karmahyundai.com.
 
 ---
 
-# PART E - WORKFLOW TEST
+# 9. SERVICE TEST
 
-## 14. First test with one Zoho user
+Submit:
+- Vertical: `Service`
 
-Do not bulk-add everyone yet.
+Expected approver:
+`groupgm.service@karmahyundai.com`
 
-Add one actual Zoho employee to USER_MASTER:
+Imran should not see the request in his vertical queue.
 
-```text
-user@karmahyundai.com | Test User | USER | ACTIVE
-```
-
-Then:
-
-1. Open the Netlify URL.
-2. Enter the Zoho email.
-3. Click **Send OTP**.
-4. Confirm OTP arrives in Zoho.
-5. Login.
-6. Enter a Google Sheet name.
-7. Enter a purpose.
-8. Submit.
-9. Login as an ADMIN/SUPERADMIN.
-10. Confirm request appears as PENDING.
-11. Click APPROVE.
-12. Confirm exactly one Google Sheet is created.
-13. Check that it is under the intended Google owner account.
-14. Open the Sheet's Share settings.
-15. Confirm **General access = Restricted**.
-16. Confirm the Zoho requester is explicitly present as **Editor**.
-17. Confirm the Zoho user receives Google's sharing / visitor-verification email.
-18. Confirm the user can edit the Sheet.
-19. Confirm SHEET_REQUESTS stores:
-    - APPROVED
-    - Sheet ID
-    - Sheet URL
-    - owner email
-    - approving admin
-    - timestamp.
+The Service head should see it.
 
 ---
 
-# PART F - REJECTION TEST
+# 10. BACKEND / OTHER TEST
 
-Submit another request.
+Submit:
+- Vertical: `Backend / Other Departments`
 
-Admin selects **Reject** and enters the reason.
+Expected:
+- Kashish gets the request.
+- Armaan gets the request.
+- Both see it in their queues.
 
-Confirm:
+First-decision rule:
+- If Kashish approves first → request becomes APPROVED; Armaan cannot reject it later.
+- If Armaan rejects first → request becomes REJECTED; Kashish cannot approve it later.
 
-- No Google Sheet is created.
-- Status = REJECTED.
-- Reason appears in My Requests.
-- Rejection email reaches the requester.
-
----
-
-# PART G - ERROR / DUPLICATE PROTECTION TEST
-
-The script protects against a partial approval.
-
-If:
-
-1. Google Sheet creation succeeds.
-2. Sharing fails.
-3. Request becomes ERROR.
-
-The already-created `SHEET_ID` is saved.
-
-When Admin presses Approve again, the backend reuses that existing Sheet and retries sharing.
-
-It does not intentionally create another Google Sheet.
-
-The approval operation also uses a script lock to prevent two admins approving the same request simultaneously.
+The backend uses a script lock around the decision, so two simultaneous actions are serialized.
 
 ---
 
-# PART H - DAILY MAINTENANCE
+# 11. ADMIN / SUPERADMIN TEST
 
-## Add employee
+Login as an active ADMIN or SUPERADMIN.
 
-Add one row to `USER_MASTER`:
+The Approval Queue should show:
 
-```text
-EMAIL | NAME | USER | ACTIVE
-```
+`Showing all requests — Admin/SuperAdmin oversight`
 
-No redeployment is required.
-
-## Disable employee
-
-Change:
-
-```text
-ACTIVE
-```
-
-to:
-
-```text
-INACTIVE
-```
-
-Their next authenticated operation will be blocked.
-
-## Add admin
-
-Change ROLE to:
-
-```text
-ADMIN
-```
-
-or:
-
-```text
-SUPERADMIN
-```
-
-No frontend redeployment is required.
-
-## Frontend change
-
-Edit or push changes to GitHub.
-
-Netlify automatically creates a new deployment from the repository.
-
-The user-facing URL remains unchanged.
-
-## Apps Script backend change
-
-Update `Code.gs` in Apps Script.
-
-Create a new Web App deployment version if required.
-
-If the Apps Script `/exec` URL changes, update only the Netlify environment variable:
-
-`APPS_SCRIPT_URL`
-
-Users continue using the same Netlify/custom-domain URL.
+They can see and act on all verticals as fallback authority.
 
 ---
 
-# Security rules
+# 12. EXISTING OLD REQUESTS
 
-1. Never commit the actual `API_SECRET` to GitHub.
-2. Never put `API_SECRET` in `public/app.js`.
-3. Keep the GitHub repository private.
-4. Keep Google generated Sheets Restricted.
-5. Do not enable Anyone-with-link for generated Sheets.
-6. Only ACTIVE users can log in.
-7. Admin actions are revalidated on the backend.
-8. The browser cannot choose who receives sharing access; the requester email is read from the stored request.
-9. The Netlify Function is the only browser-facing API path.
-10. Keep Visitor Sharing enabled in Google Workspace for Zoho-only users.
+Requests submitted before v1.3 will have blank:
+- VERTICAL
+- APPROVER_EMAIL_1
+- APPROVER_EMAIL_2
+
+They remain visible to ADMIN/SUPERADMIN.
+
+They do **not** automatically appear in a Vertical Head's assigned queue.
+
+For any old pending request that must be routed, manually fill those three fields in its row.
 
 ---
 
-# Recommended production URL
+# 13. ADDING A NEW VERTICAL LATER
 
-**Preferred:**
+Just add a row in `VERTICAL_MASTER`.
 
-`https://sheets.karmahyundai.com`
+Example:
 
-**Fallback if no custom domain is configured yet:**
+`Finance | financehead@karmahyundai.com | Finance Head | | | ACTIVE | 40`
 
-`https://karma-sheet-request.netlify.app`
+It will automatically:
+- appear in the request dropdown,
+- route new requests to the configured head,
+- give that configured email Vertical Head approval access.
+
+No code deployment is required.
+
+---
+
+# Security and governance
+
+1. Requester selects only a vertical, never an approver email.
+2. Routing is revalidated server-side.
+3. Vertical Heads see only requests assigned to their captured approver email.
+4. ADMIN/SUPERADMIN see all requests.
+5. Vertical Heads do not become Google Sheet owners.
+6. The Google deployment owner remains the creator/owner.
+7. Generated Sheets are forced to Restricted.
+8. Only the requester email is added as Editor.
+9. Backend/Other is first-decision-wins between Kashish and Armaan.
+10. Ordinary users do not need to be added to USER_MASTER.
+11. An email explicitly listed as non-ACTIVE in USER_MASTER is blocked.
+12. Existing Netlify URL remains the user-facing portal.
+
+---
+
+# Recommended deployment order
+
+1. Back up the control Sheet.
+2. Replace `Code.gs`.
+3. Replace/verify `appsscript.json`.
+4. Run `setupSystem()`.
+5. Verify `VERTICAL_MASTER`.
+6. Update the existing Apps Script deployment to a new version.
+7. Push the revised frontend files to GitHub.
+8. Wait for Netlify deployment.
+9. Hard refresh the Netlify portal.
+10. Test Sales.
+11. Test Service.
+12. Test Backend / Other.
+13. Test Admin/SuperAdmin oversight.

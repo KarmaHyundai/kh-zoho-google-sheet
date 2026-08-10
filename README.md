@@ -1,61 +1,32 @@
-# Karma Hyundai - Google Sheet Request Portal
+# Karma Hyundai Google Sheet Request v1.3
 
-Final architecture:
+## New in this version
+Vertical-based approval routing.
 
-Zoho / Google split-mail user
--> Netlify portal
--> OTP authentication
--> request Google Sheet
--> Google admin approval
--> Apps Script creates the Sheet under the Google deployment-owner account
--> Sheet remains Restricted
--> exact requester email is added as Editor
--> Google visitor-sharing verification is used when the requester has no Google account.
+- Sales → imran@karmahyundai.com
+- Service → groupgm.service@karmahyundai.com
+- Backend / Other Departments → kashish@karmahyundai.com OR armaan@karmahyundai.com
+
+The requester selects the vertical. The backend selects the approver.
+
+## Approval roles
+- USER
+- VERTICAL_HEAD
+- ADMIN
+- SUPERADMIN
+
+`VERTICAL_HEAD` is derived automatically from `VERTICAL_MASTER`.
+
+## Data tabs
+- USER_MASTER
+- SHEET_REQUESTS
+- VERTICAL_MASTER
+
+`setupSystem()` upgrades v1.2 by appending vertical-routing columns without deleting existing requests.
 
 ## Hosting
-
-Frontend:
-- GitHub repository
-- Netlify continuous deployment
-
-Backend:
-- Google Apps Script web app
-- Execute as the Google account that should own generated Sheets
-
-Control database:
-- Google Sheet with only:
-  - USER_MASTER
-  - SHEET_REQUESTS
-
-## Repository layout
-
-/public
-  index.html
-  styles.css
-  app.js
-
-/netlify/functions
-  api.mjs
-
-/google-apps-script
-  Code.gs
-  appsscript.json
-
-netlify.toml
-.gitignore
-.env.example
-IMPLEMENTATION_STEPS.md
-
-## Why the Netlify Function is included
-
-The browser does not call Apps Script directly.
-
-Instead:
-
-Browser
--> /.netlify/functions/api
--> Apps Script
-
-The private Apps Script `API_SECRET` is stored in Netlify Environment Variables and inserted server-side.
-
-Never put that secret in `public/app.js`, GitHub source, or HTML.
+- GitHub → Netlify frontend
+- Netlify Function → Apps Script backend
+- Apps Script runs as the central Google deployment owner
+- Approved Sheet remains Restricted
+- Requester receives Editor access
