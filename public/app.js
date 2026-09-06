@@ -4,7 +4,9 @@ const state={
   sessionToken:sessionStorage.getItem('khGsrSession')||'',
   user:null,
   verticals:[],
-  canApprove:false
+  canApprove:false,
+  restoreSearchInput:'',
+  restoreHistoryLoaded:false
 };
 
 const $=id=>document.getElementById(id);
@@ -23,6 +25,7 @@ async function api(action,data={}){
   if(!response.ok||!result.ok){
     throw new Error(result.error||'Request failed.');
   }
+
   return result;
 }
 
@@ -52,7 +55,7 @@ function formatDate(value){
 
 function statusBadge(status){
   const s=escapeHtml(status||'');
-  return '<span class="badge '+s+'">'+s+'</span>';
+  return '<span class="badge '+s+'">'+s.replaceAll('_',' ')+'</span>';
 }
 
 function formatRole(role){
@@ -61,6 +64,11 @@ function formatRole(role){
   if(r==='SUPERADMIN')return'SuperAdmin';
   if(r==='ADMIN')return'Admin';
   return'User';
+}
+
+function deriveOldEmail(currentEmail){
+  const parts=String(currentEmail||'').split('@');
+  return parts.length===2?'old.'+parts[0]+'@'+parts[1]:'';
 }
 
 function handleSessionError(err){
@@ -86,7 +94,9 @@ async function sendOtp(){
     $('otp').focus();
   }catch(err){
     setMessage('loginMessage',err.message,'error');
-  }finally{busy(false);}
+  }finally{
+    busy(false);
+  }
 }
 
 async function verifyOtp(){
@@ -99,12 +109,13 @@ async function verifyOtp(){
     state.sessionToken=out.sessionToken;
     state.user=out.user;
     sessionStorage.setItem('khGsrSession',state.sessionToken);
-
     showApplication();
     await refreshApplication();
   }catch(err){
     setMessage('loginMessage',err.message,'error');
-  }finally{busy(false);}
+  }finally{
+    busy(false);
+  }
 }
 
 async function restoreSession(){
@@ -123,20 +134,15 @@ function showApplication(){
   $('loginCard').classList.add('hidden');
   $('app').classList.remove('hidden');
   $('logoutBtn').classList.remove('hidden');
-
   $('userName').textContent=state.user.name||state.user.email;
   $('userMeta').textContent=state.user.email+' | '+formatRole(state.user.role);
+  $('oldEmailHint').textContent=deriveOldEmail(state.user.email);
 }
 
 async function logoutUser(){
-  try{
-    if(state.sessionToken)await api('logout');
-  }catch(err){
-    console.warn(err);
-  }finally{
-    clearLocalSession();
-    location.reload();
-  }
+  try{if(state.sessionToken)await api('logout');}
+  catch(err){console.warn(err);}
+  finally{clearLocalSession();location.reload();}
 }
 
 function clearLocalSession(){
@@ -144,22 +150,48 @@ function clearLocalSession(){
   state.user=null;
   state.verticals=[];
   state.canApprove=false;
+  state.restoreHistoryLoaded=false;
   sessionStorage.removeItem('khGsrSession');
 }
 
 async function loadPortalConfig(){
   const out=await api('portalConfig');
-
   state.user=out.user;
   state.verticals=out.verticals||[];
   state.canApprove=Boolean(out.canApprove);
 
   renderVerticals();
-
   $('approvalArea').classList.toggle('hidden',!state.canApprove);
+
   $('userName').textContent=state.user.name||state.user.email;
   $('userMeta').textContent=state.user.email+' | '+formatRole(state.user.role);
+  $('oldEmailHint').textContent=deriveOldEmail(state.user.email);
 }
+
+function showWorkflow(name){
+  const create=name==='create';
+  $('createPanel').classList.toggle('hidden',!create);
+  $('restorePanel').classList.toggle('hidden',create);
+  $('showCreateBtn').classList.toggle('active',create);
+  $('showRestoreBtn').classList.toggle('active',!create);
+
+  if(!create&&!state.restoreHistoryLoaded){
+    loadRestoreHistoryUi();
+  }
+}
+
+function setRestoreMethod(method){
+  const name=method==='name';
+  $('nameMethod').classList.toggle('hidden',!name);
+  $('urlMethod').classList.toggle('hidden',name);
+  $('methodNameBtn').classList.toggle('active',name);
+  $('methodUrlBtn').classList.toggle('active',!name);
+  setMessage('restoreSearchMessage','');
+  setMessage('restoreUrlMessage','');
+}
+
+
+/* NEW SHEET */
 
 function renderVerticals(){
   const select=$('vertical');
@@ -179,8 +211,7 @@ function renderVerticals(){
 }
 
 function updateApproverHint(){
-  const selected=$('vertical').value;
-  const vertical=state.verticals.find(v=>v.vertical===selected);
+  const vertical=state.verticals.find(v=>v.vertical===$('vertical').value);
   const hint=$('approverHint');
 
   if(!vertical){
@@ -231,10 +262,13 @@ async function submitRequest(){
 
     await loadMyRequests();
     if(state.canApprove)await loadApprovalQueue();
+
   }catch(err){
     handleSessionError(err);
     setMessage('requestMessage',err.message,'error');
-  }finally{busy(false);}
+  }finally{
+    busy(false);
+  }
 }
 
 async function loadMyRequests(){
@@ -257,24 +291,196 @@ async function loadMyRequests(){
 
     return `
       <tr>
-        <td><strong>${escapeHtml(r.requestId)}</strong><br><span class="muted">${escapeHtml(formatDate(r.requestedAt))}</span></td>
+        <td><strong>${escapeHtml(r.requestId)}</strong><br>
+        <span class="muted">${escapeHtml(formatDate(r.requestedAt))}</span></td>
         <td>${escapeHtml(r.vertical||'-')}</td>
         <td>${escapeHtml(r.sheetName)}${note}</td>
         <td>${statusBadge(r.status)}</td>
         <td>${action}</td>
-      </tr>
-    `;
+      </tr>`;
   }).join('');
 }
+
+
+/* RESTORE ACCESS */
+
+async function searchRestoreByName(){
+  const query=$('restoreName').value.trim();
+
+  if(query.length<3){
+    setMessage('restoreSearchMessage','Enter at least 3 characters of the Sheet name.','error');
+    return;
+  }
+
+  state.restoreSearchInput=query;
+
+  busy(true,'Searching your previous Google Sheets…');
+  try{
+    const out=await api('restoreSearch',{query});
+    setMessage(
+      'restoreSearchMessage',
+      out.message,
+      out.results&&out.results.length?'success':''
+    );
+    renderRestoreResults(out.results||[]);
+  }catch(err){
+    handleSessionError(err);
+    setMessage('restoreSearchMessage',err.message,'error');
+  }finally{
+    busy(false);
+  }
+}
+
+function renderRestoreResults(results){
+  const body=$('restoreResultsBody');
+
+  if(!results.length){
+    body.innerHTML=
+      '<tr><td colspan="4" class="muted">No matching Sheet with verified previous access was found.</td></tr>';
+    return;
+  }
+
+  body.innerHTML=results.map(r=>`
+    <tr>
+      <td><strong>${escapeHtml(r.name)}</strong></td>
+      <td>${escapeHtml(formatDate(r.modifiedTime))}</td>
+      <td>${escapeHtml(r.previousAccess||r.previousRole||'')}</td>
+      <td>
+        <button class="btn primary small" data-restore-file="${escapeHtml(r.fileId)}">
+          Restore Access
+        </button>
+      </td>
+    </tr>
+  `).join('');
+
+  body.querySelectorAll('[data-restore-file]').forEach(button=>{
+    button.addEventListener('click',()=>restoreSelectedFile(button.dataset.restoreFile));
+  });
+}
+
+async function restoreSelectedFile(fileId){
+  if(!confirm('Restore your verified previous access to this Google Sheet?'))return;
+
+  busy(true,'Verifying and restoring access…');
+  try{
+    const out=await api('restoreSelected',{
+      fileId,
+      searchInput:state.restoreSearchInput
+    });
+
+    showRestoreResult(out);
+    await loadRestoreHistory();
+  }catch(err){
+    handleSessionError(err);
+    alert(err.message);
+  }finally{
+    busy(false);
+  }
+}
+
+async function restoreUsingUrl(){
+  const url=$('restoreUrl').value.trim();
+
+  if(!url){
+    setMessage('restoreUrlMessage','Paste the Google Sheet URL.','error');
+    return;
+  }
+
+  busy(true,'Verifying previous access…');
+  try{
+    const out=await api('restoreByUrl',{url});
+
+    if(out.status==='DENIED'){
+      setMessage('restoreUrlMessage',out.message,'error');
+    }else{
+      setMessage('restoreUrlMessage',out.message,'success');
+    }
+
+    if(out.fileUrl&&out.status!=='DENIED'){
+      $('restoreUrlMessage').innerHTML=
+        escapeHtml(out.message)+' <a class="link" target="_blank" rel="noopener" href="'+
+        escapeHtml(out.fileUrl)+'">Open Sheet</a>';
+    }
+
+    await loadRestoreHistory();
+  }catch(err){
+    handleSessionError(err);
+    setMessage('restoreUrlMessage',err.message,'error');
+  }finally{
+    busy(false);
+  }
+}
+
+function showRestoreResult(out){
+  if(out.status==='DENIED'){
+    alert(out.message);
+    return;
+  }
+
+  const access=out.restoredAccess||out.previousAccess||'';
+  const message=out.message+(access?' Access: '+access+'.':'');
+
+  if(out.fileUrl){
+    if(confirm(message+'\n\nOpen the Google Sheet now?')){
+      window.open(out.fileUrl,'_blank','noopener');
+    }
+  }else{
+    alert(message);
+  }
+}
+
+async function loadRestoreHistory(){
+  const out=await api('restoreHistory');
+  state.restoreHistoryLoaded=true;
+  const body=$('restoreHistoryBody');
+
+  if(!out.history.length){
+    body.innerHTML='<tr><td colspan="5" class="muted">No access restore requests yet.</td></tr>';
+    return;
+  }
+
+  body.innerHTML=out.history.map(r=>{
+    const action=r.fileUrl&&r.status!=='DENIED'
+      ? '<a class="link" target="_blank" rel="noopener" href="'+escapeHtml(r.fileUrl)+'">Open Sheet</a>'
+      : '-';
+
+    return `
+      <tr>
+        <td><strong>${escapeHtml(r.restoreId)}</strong><br>
+        <span class="muted">${escapeHtml(formatDate(r.requestedAt))}</span></td>
+        <td>${escapeHtml(r.fileName||'-')}<br>
+        <span class="muted">${escapeHtml(r.message||'')}</span></td>
+        <td>${escapeHtml(r.previousAccess||'-')}</td>
+        <td>${statusBadge(r.status)}</td>
+        <td>${action}</td>
+      </tr>`;
+  }).join('');
+}
+
+async function loadRestoreHistoryUi(){
+  busy(true,'Loading restore history…');
+  try{
+    await loadRestoreHistory();
+  }catch(err){
+    handleSessionError(err);
+    alert(err.message);
+  }finally{
+    busy(false);
+  }
+}
+
+
+/* APPROVAL QUEUE */
 
 async function loadApprovalQueue(){
   if(!state.canApprove)return;
 
   const out=await api('approvalDashboard',{status:$('approvalFilter').value});
 
-  $('approvalScope').textContent=out.scope==='ALL'
-    ? 'Showing all requests — Admin/SuperAdmin oversight'
-    : 'Showing only requests routed to you';
+  $('approvalScope').textContent=
+    out.scope==='ALL'
+      ? 'Showing all requests — Admin/SuperAdmin oversight'
+      : 'Showing only requests routed to you';
 
   $('statPending').textContent=out.summary.pending;
   $('statApproved').textContent=out.summary.approved;
@@ -301,11 +507,13 @@ async function loadApprovalQueue(){
     }
 
     if(canApproveNow){
-      actions+='<button class="btn primary small" data-approve="'+escapeHtml(r.requestId)+'">Approve</button>';
+      actions+='<button class="btn primary small" data-approve="'+
+        escapeHtml(r.requestId)+'">Approve</button>';
     }
 
     if(canRejectNow){
-      actions+='<button class="btn danger small" data-reject="'+escapeHtml(r.requestId)+'">Reject</button>';
+      actions+='<button class="btn danger small" data-reject="'+
+        escapeHtml(r.requestId)+'">Reject</button>';
     }
 
     actions+='</div>';
@@ -317,15 +525,17 @@ async function loadApprovalQueue(){
 
     return `
       <tr>
-        <td><strong>${escapeHtml(r.requestId)}</strong><br><span class="muted">${escapeHtml(formatDate(r.requestedAt))}</span></td>
+        <td><strong>${escapeHtml(r.requestId)}</strong><br>
+        <span class="muted">${escapeHtml(formatDate(r.requestedAt))}</span></td>
         <td>${escapeHtml(r.vertical||'-')}</td>
-        <td>${escapeHtml(r.requesterName)}<br><span class="muted">${escapeHtml(r.requesterEmail)}</span></td>
-        <td><strong>${escapeHtml(r.sheetName)}</strong><br><span class="muted">${escapeHtml(r.purpose)}</span></td>
+        <td>${escapeHtml(r.requesterName)}<br>
+        <span class="muted">${escapeHtml(r.requesterEmail)}</span></td>
+        <td><strong>${escapeHtml(r.sheetName)}</strong><br>
+        <span class="muted">${escapeHtml(r.purpose)}</span></td>
         <td>${statusBadge(r.status)}</td>
         <td>${decision||'-'}</td>
         <td>${actions}</td>
-      </tr>
-    `;
+      </tr>`;
   }).join('');
 
   body.querySelectorAll('[data-approve]').forEach(button=>{
@@ -338,10 +548,9 @@ async function loadApprovalQueue(){
 }
 
 async function approveRequest(requestId){
-  const confirmed=confirm(
+  if(!confirm(
     'Approve '+requestId+'?\n\nThe Google Admin backend will create the Sheet, keep it Restricted, and add the requester as Editor.'
-  );
-  if(!confirmed)return;
+  ))return;
 
   busy(true,'Creating and sharing Google Sheet…');
   try{
@@ -351,10 +560,9 @@ async function approveRequest(requestId){
   }catch(err){
     handleSessionError(err);
     alert(err.message);
-    if(state.sessionToken&&state.canApprove){
-      try{await loadApprovalQueue();}catch{}
-    }
-  }finally{busy(false);}
+  }finally{
+    busy(false);
+  }
 }
 
 async function rejectRequest(requestId){
@@ -369,8 +577,13 @@ async function rejectRequest(requestId){
   }catch(err){
     handleSessionError(err);
     alert(err.message);
-  }finally{busy(false);}
+  }finally{
+    busy(false);
+  }
 }
+
+
+/* REFRESH / EVENTS */
 
 async function refreshApplication(){
   await loadPortalConfig();
@@ -399,14 +612,31 @@ $('refreshMineBtn').addEventListener('click',refreshMineUi);
 $('refreshApprovalBtn').addEventListener('click',refreshApprovalUi);
 $('vertical').addEventListener('change',updateApproverHint);
 
+$('showCreateBtn').addEventListener('click',()=>showWorkflow('create'));
+$('showRestoreBtn').addEventListener('click',()=>showWorkflow('restore'));
+$('methodNameBtn').addEventListener('click',()=>setRestoreMethod('name'));
+$('methodUrlBtn').addEventListener('click',()=>setRestoreMethod('url'));
+$('searchRestoreBtn').addEventListener('click',searchRestoreByName);
+$('restoreUrlBtn').addEventListener('click',restoreUsingUrl);
+$('refreshRestoreHistoryBtn').addEventListener('click',loadRestoreHistoryUi);
+
 $('approvalFilter').addEventListener('change',async()=>{
   try{await loadApprovalQueue();}
   catch(err){handleSessionError(err);alert(err.message);}
 });
 
 $('logoutBtn').addEventListener('click',logoutUser);
+
 $('otp').addEventListener('keydown',event=>{
   if(event.key==='Enter')verifyOtp();
+});
+
+$('restoreName').addEventListener('keydown',event=>{
+  if(event.key==='Enter')searchRestoreByName();
+});
+
+$('restoreUrl').addEventListener('keydown',event=>{
+  if(event.key==='Enter')restoreUsingUrl();
 });
 
 restoreSession();
